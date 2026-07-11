@@ -1,14 +1,45 @@
 // ---------------------------------------------------------------------------
-// Data model & enum used across the Settings feature.
+// Data models & enums used across the Settings feature.
 // ---------------------------------------------------------------------------
 
 enum ValidationResult { valid, invalid, networkError, unknown }
-enum ModelProvider { openRouter, groq }
+enum ModelProvider    { openRouter, groq }
+
+// New: result of a live model ping
+enum ModelPingResult  { success, emptyResponse, failed, unauthorized, networkError, noKey }
+
+// New: per-key status shown in the UI
+enum KeyStatus { idle, checking, valid, invalid, networkError }
 
 class ModelFetchResult {
   const ModelFetchResult({required this.models, required this.errors});
   final List<OpenRouterModel> models;
   final List<String> errors;
+}
+
+// Replaces the inline record type from the old service
+class SavedSettings {
+  const SavedSettings({
+    this.apiKey,
+    this.modelId,
+    this.groqApiKey,
+    this.modelProvider = ModelProvider.openRouter,
+  });
+  final String? apiKey;
+  final String? modelId;
+  final String? groqApiKey;
+  final ModelProvider modelProvider;
+}
+
+class RagSettings {
+  const RagSettings({
+    this.embeddingMode,
+    this.indexingTrigger,
+    this.embeddingApiKey,
+  });
+  final String? embeddingMode;
+  final String? indexingTrigger;
+  final String? embeddingApiKey;
 }
 
 class OpenRouterModel {
@@ -23,8 +54,6 @@ class OpenRouterModel {
   final String id;
   final String name;
   final bool isFree;
-
-  /// Human-readable price label e.g. "$0.15/M". Null for free models.
   final String? priceLabel;
   final ModelProvider provider;
 
@@ -36,27 +65,22 @@ class OpenRouterModel {
     if (!free) {
       final pricing = json['pricing'] as Map<String, dynamic>?;
       if (pricing != null) {
-        // Try prompt price first, fall back to completion price.
-        final rawPrompt     = pricing['prompt']?.toString() ?? '0';
-        final rawCompletion = pricing['completion']?.toString() ?? '0';
+        final rawPrompt      = pricing['prompt']?.toString() ?? '0';
+        final rawCompletion  = pricing['completion']?.toString() ?? '0';
         final promptCost     = double.tryParse(rawPrompt) ?? 0.0;
         final completionCost = double.tryParse(rawCompletion) ?? 0.0;
-
-        // Use whichever is non-zero (prompt price is standard).
         final cost = promptCost > 0 ? promptCost : completionCost;
         if (cost > 0) {
-          final perMillion = cost * 1000000;
-          // Format: remove trailing zeros — e.g. $0.15/M not $0.150000/M
-          final formatted = perMillion < 1
+          final perMillion = cost * 1_000_000;
+          priceLabel = perMillion < 1
               ? '\$${perMillion.toStringAsFixed(3)}/M'
               : '\$${perMillion.toStringAsFixed(2)}/M';
-          priceLabel = formatted;
         }
       }
     }
 
     return OpenRouterModel(
-      id: id,
+      id:   id,
       name: json['name'] as String? ?? id,
       isFree: free,
       priceLabel: priceLabel,

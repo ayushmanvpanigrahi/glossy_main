@@ -59,12 +59,15 @@ class _HomeScreenState extends State<HomeScreen> {
         }
       }
 
-      // Check for books that need RAG indexing (e.g. if they were added
-      // while RAG was off, or in a previous app version).
+      // NOTE: it's safe to fire these without awaiting or checking
+      // isIndexed() ourselves here — LibraryEnrichment.maybeIndexBook()
+      // now does its own isIndexed() check internally (skips already-
+      // indexed books instantly) AND serializes any real indexing work
+      // through its internal queue, one book at a time. So this loop
+      // just "offers" every book and lets LibraryEnrichment decide what
+      // actually needs to happen.
       for (final book in list) {
-        _enrichment.isIndexed(book).then((indexed) {
-          if (!indexed) _enrichment.maybeIndexBook(book);
-        });
+        _enrichment.maybeIndexBook(book);
       }
     } finally {
       if (mounted) setState(() => _isLoadingLibrary = false);
@@ -219,6 +222,9 @@ class _HomeScreenState extends State<HomeScreen> {
       if (_books.any(
         (b) => p.basenameWithoutExtension(b.pdfPath) == prospectiveTitle,
       )) {
+        if (mounted){
+          _showSnackBar('This book is already in your library.');
+        }
         return;
       }
 
@@ -336,6 +342,7 @@ class _HomeScreenState extends State<HomeScreen> {
             onToggleSelected: () => _toggleSelected(book.pdfPath),
             onEnterSelectionMode: () => _enterSelectionMode(book.pdfPath),
             onDelete: () => _confirmDeleteSingle(book),
+            onIndexNow: () => _enrichment.indexBookNow(book),
           );
         }
         return EmptySlot(onTap: _isSelectionMode ? () {} : _onUploadPressed);

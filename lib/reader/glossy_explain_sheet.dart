@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import '../app_colors.dart';
+import '../library/indexing_status_service.dart';
+import '../rag/rag_models.dart';
 import 'ai_explain_service.dart';
 import 'explain_cards.dart';
 import 'explain_sheet_header.dart';
@@ -34,6 +36,8 @@ class _GlossyExplainSheetState extends State<GlossyExplainSheet> {
   final List<ChatTurn> _followUpHistory = [];
   final List<String> _followUpAnswers = [];
   bool _isSendingFollowUp = false;
+
+  bool? _lastRagUsed;
 
   @override
   void initState() {
@@ -84,17 +88,36 @@ class _GlossyExplainSheetState extends State<GlossyExplainSheet> {
         selectedText: widget.selectedText,
         history: priorHistory,
         question: question,
+        onRagStatus: (used) => setState(() => _lastRagUsed = used),
       );
       setState(() {
         _followUpHistory.add(ChatTurn(role: 'assistant', content: answer));
         _followUpAnswers.add(answer);
       });
-    } catch (_) {
+    } catch (e) {
+      debugPrint('Glossy follow-up error: $e');
       setState(
-        () => _followUpAnswers.add('Sorry, kuch gadbad ho gayi — dobara try karo.'),
+        () => _followUpAnswers.add('Sorry, kuch gadbad ho gayi — dobara try karo.\n($e)'),
       );
     } finally {
       if (mounted) setState(() => _isSendingFollowUp = false);
+    }
+  }
+
+  String? _ragStatusLabel(Map<String, BookIndexStatus> statuses) {
+    if (_lastRagUsed == true) return 'RAG used';
+    if (_lastRagUsed == false) return 'RAG: no match';
+
+    final indexStatus = statuses[widget.bookId] ?? BookIndexStatus.notIndexed;
+    switch (indexStatus) {
+      case BookIndexStatus.indexed:
+        return 'RAG ready';
+      case BookIndexStatus.indexing:
+        return 'Indexing…';
+      case BookIndexStatus.failed:
+        return 'RAG error';
+      case BookIndexStatus.notIndexed:
+        return 'RAG off';
     }
   }
 
@@ -112,7 +135,13 @@ class _GlossyExplainSheetState extends State<GlossyExplainSheet> {
           ),
           child: Column(
             children: [
-              ExplainSheetHeader(modelLabel: widget.modelLabel),
+              ValueListenableBuilder<Map<String, BookIndexStatus>>(
+                valueListenable: IndexingStatusService.instance.statusNotifier,
+                builder: (context, statuses, _) => ExplainSheetHeader(
+                  modelLabel: widget.modelLabel,
+                  ragStatusLabel: _ragStatusLabel(statuses),
+                ),
+              ),
               const Divider(height: 1, color: AppColors.border),
               Expanded(
                 child: ListView(

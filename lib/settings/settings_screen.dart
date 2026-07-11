@@ -3,12 +3,11 @@ import '../app_colors.dart';
 import '../ai_status.dart';
 import 'settings_models.dart';
 import 'settings_service.dart';
-import 'provider_widgets.dart';
 import 'settings_sections.dart';
 import 'status_widgets.dart';
 
 // ---------------------------------------------------------------------------
-// SettingsScreen widget
+// SettingsScreen
 // ---------------------------------------------------------------------------
 
 class SettingsScreen extends StatefulWidget {
@@ -19,41 +18,51 @@ class SettingsScreen extends StatefulWidget {
 }
 
 class _SettingsScreenState extends State<SettingsScreen> {
-  // Static: persists across tab switches but resets on full app restart.
   static bool _hasAutoValidatedThisSession = false;
 
-  final _apiKeyController = TextEditingController();
-  final _modelSearchController = TextEditingController();
   final _service = SettingsService();
 
-  // UI state
-  bool _obscureApiKey = true;
-  bool _isLoading = true;
-  bool _isProviderOpen = false;
+  // Controllers
+  final _orKeyCtrl     = TextEditingController();
+  final _groqKeyCtrl   = TextEditingController();
+  final _geminiKeyCtrl = TextEditingController();
+  final _modelSearchCtrl = TextEditingController();
 
-  // AI status initialised from notifier so tab-switch preserves it.
-  String get _aiStatus => aiStatusNotifier.value;
+  // Obscure toggles
+  bool _obscureOr     = true;
+  bool _obscureGroq   = true;
+  bool _obscureGemini = true;
 
-  // Model state
-  List<OpenRouterModel> _allModels = [];
-  bool _isModelsLoading = true;
+  // Loading
+  bool _isLoading        = true;
+  bool _isSaving         = false;
+  bool _isModelsLoading  = true;
   String? _modelsFetchError;
-  String? _selectedModelId;
-  bool _freeOnly = false;
-  String _searchQuery = '';
-  String _embeddingMode = 'api';
-  String _indexingTrigger = 'onAdd';
-  final _embeddingApiKeyController = TextEditingController();
-  bool _obscureEmbeddingKey = true;
-
-  final _groqApiKeyController = TextEditingController();
-  bool _obscureGroqApiKey = true;
-  ModelProvider _selectedModelProvider = ModelProvider.openRouter;
   List<String> _modelFetchWarnings = [];
 
-  // ---------------------------------------------------------------------------
-  // Lifecycle
-  // ---------------------------------------------------------------------------
+  // Per-key validation status
+  KeyStatus _orStatus     = KeyStatus.idle;
+  KeyStatus _groqStatus   = KeyStatus.idle;
+  KeyStatus _geminiStatus = KeyStatus.idle;
+
+  // Model ping
+  ModelPingResult? _modelPingResult;
+  bool _isPinging = false;
+
+  // Model state
+  List<OpenRouterModel> _allModels      = [];
+  String? _selectedModelId;
+  ModelProvider _selectedModelProvider  = ModelProvider.openRouter;
+  bool _freeOnly      = false;
+  String _searchQuery = '';
+
+  // RAG
+  String _embeddingMode    = 'api';
+  String _indexingTrigger  = 'onAdd';
+
+  String get _aiStatus => aiStatusNotifier.value;
+
+  // ── Lifecycle ─────────────────────────────────────────────────────────────
 
   @override
   void initState() {
@@ -63,96 +72,70 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   @override
   void dispose() {
-    _apiKeyController.dispose();
-    _modelSearchController.dispose();
-    _embeddingApiKeyController.dispose();
-    _groqApiKeyController.dispose();
+    _orKeyCtrl.dispose();
+    _groqKeyCtrl.dispose();
+    _geminiKeyCtrl.dispose();
+    _modelSearchCtrl.dispose();
     super.dispose();
   }
 
-  // ---------------------------------------------------------------------------
-  // Status helper — keeps instance + static in sync at all times
-  // ---------------------------------------------------------------------------
-
-  void _updateAiStatus(String status) {
-    aiStatusNotifier.value = status;
-    setState(() {}); // rebuild so _aiStatus getter reflects new value
-  }
-
-  // ---------------------------------------------------------------------------
-  // Init helpers
-  // ---------------------------------------------------------------------------
+  // ── Init ──────────────────────────────────────────────────────────────────
 
   Future<void> _init() async {
-    await _loadSavedSettings();
-    await _loadRagSettings();
+    await Future.wait([_loadSaved(), _loadRag()]);
     await _fetchModels();
 
-    final apiKey = _apiKeyController.text.trim();
-    if (apiKey.isNotEmpty && !_hasAutoValidatedThisSession) {
-      final result = await _runValidation(apiKey, showSnackbar: false);
-      // Only mark validated if we got a real answer (not a transient network failure).
-      if (result != ValidationResult.networkError) {
-        _hasAutoValidatedThisSession = true;
-      }
+    // Auto-validate keys that are already saved
+    if (!_hasAutoValidatedThisSession) {
+      await _autoValidateAll();
+      _hasAutoValidatedThisSession = true;
     }
   }
 
-  Future<void> _loadSavedSettings() async {
-    final saved = await _service.loadSavedSettings();
-
+  Future<void> _loadSaved() async {
+    final s = await _service.loadSavedSettings();
     setState(() {
-      if (saved.apiKey != null) _apiKeyController.text = saved.apiKey!;
-      if (saved.groqApiKey != null) {
-        _groqApiKeyController.text = saved.groqApiKey!;
-      }
-      _selectedModelId = saved.modelId;
-      _selectedModelProvider = saved.modelProvider;
-      _isLoading = false;
+      if (s.apiKey     != null) _orKeyCtrl.text   = s.apiKey!;
+      if (s.groqApiKey != null) _groqKeyCtrl.text = s.groqApiKey!;
+      _selectedModelId       = s.modelId;
+      _selectedModelProvider = s.modelProvider;
+      _isLoading             = false;
     });
   }
 
-  Future<void> _loadRagSettings() async {
-    final rag = await _service.loadRagSettings();
+  Future<void> _loadRag() async {
+    final r = await _service.loadRagSettings();
     setState(() {
-      _embeddingMode = rag.embeddingMode ?? 'api';
-      _indexingTrigger = rag.indexingTrigger ?? 'onAdd';
-      if (rag.embeddingApiKey != null) {
-        _embeddingApiKeyController.text = rag.embeddingApiKey!;
-      }
+      _embeddingMode   = r.embeddingMode   ?? 'api';
+      _indexingTrigger = r.indexingTrigger ?? 'onAdd';
+      if (r.embeddingApiKey != null) _geminiKeyCtrl.text = r.embeddingApiKey!;
     });
   }
 
-  // ---------------------------------------------------------------------------
-  // Model fetching
-  // ---------------------------------------------------------------------------
+  // ── Model fetching ────────────────────────────────────────────────────────
 
   Future<void> _fetchModels() async {
     setState(() {
-      _isModelsLoading = true;
+      _isModelsLoading  = true;
       _modelsFetchError = null;
       _modelFetchWarnings = [];
     });
 
     try {
       final result = await _service.fetchAllModels(
-        groqApiKey: _groqApiKeyController.text.trim(),
+        groqApiKey: _groqKeyCtrl.text.trim(),
       );
-
       setState(() {
-        _allModels = result.models;
+        _allModels          = result.models;
         _modelFetchWarnings = result.errors;
-        _isModelsLoading = false;
+        _isModelsLoading    = false;
       });
-
       await _ensureValidModelSelected();
     } catch (e) {
       setState(() {
         _modelsFetchError = 'Could not connect. Check your internet.';
-        _isModelsLoading = false;
+        _isModelsLoading  = false;
       });
-      _updateAiStatus('inactive');
-      _hasAutoValidatedThisSession = false;
     }
   }
 
@@ -164,7 +147,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
       }
       return;
     }
-
     final stillValid = _allModels.any((m) => m.id == _selectedModelId);
     if (_selectedModelId == null || !stillValid) {
       final fallback = _allModels.first;
@@ -173,101 +155,160 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
-  // Derived list — computed on read, no extra state variable needed.
   List<OpenRouterModel> get _filteredModels {
-    final query = _searchQuery.toLowerCase();
+    final q = _searchQuery.toLowerCase();
     return _allModels.where((m) {
       if (_freeOnly && !m.isFree) return false;
-      if (query.isNotEmpty &&
-          !m.name.toLowerCase().contains(query) &&
-          !m.id.toLowerCase().contains(query)) {
-        return false;
-      }
+      if (q.isNotEmpty &&
+          !m.name.toLowerCase().contains(q) &&
+          !m.id.toLowerCase().contains(q)) return false;
       return true;
     }).toList();
   }
 
-  // ---------------------------------------------------------------------------
-  // API key save & validation
-  // ---------------------------------------------------------------------------
+  // ── Validation ────────────────────────────────────────────────────────────
 
-  Future<void> _saveSettings() async {
-    if (_selectedModelProvider == ModelProvider.groq) {
-      final groqKey = _groqApiKeyController.text.trim();
-      if (groqKey.isEmpty) {
-        _showSnackBar('Enter a Groq API key first');
-        return;
-      }
-      await Future.wait([
-        _service.saveGroqApiKey(groqKey),
-        if (_selectedModelId?.isNotEmpty ?? false)
-          _service.saveModelId(_selectedModelId!)
-        else
-          _service.deleteModelId(),
-        _service.saveModelProvider(_selectedModelProvider),
-      ]);
-      _updateAiStatus(
-        'active',
-      ); // Groq has no key-validation endpoint like OpenRouter's /key
-      _showSnackBar('Settings saved — using Groq');
-      return;
-    }
-
-    final apiKey = _apiKeyController.text.trim();
-
-    if (apiKey.isEmpty) {
-      await _service.deleteApiKey();
-      _updateAiStatus('inactive');
-      _showSnackBar('API key cleared');
-      return;
-    }
+  Future<void> _autoValidateAll() async {
+    final or     = _orKeyCtrl.text.trim();
+    final groq   = _groqKeyCtrl.text.trim();
+    final gemini = _geminiKeyCtrl.text.trim();
 
     await Future.wait([
-      _service.saveApiKey(apiKey),
-      if (_selectedModelId?.isNotEmpty ?? false)
-        _service.saveModelId(_selectedModelId!)
-      else
-        _service.deleteModelId(),
-      _service.saveModelProvider(_selectedModelProvider),
+      if (or.isNotEmpty)     _validateOrKey(or,     announce: false),
+      if (groq.isNotEmpty)   _validateGroqKey(groq, announce: false),
+      if (gemini.isNotEmpty) _validateGeminiKey(gemini, announce: false),
     ]);
 
-    _hasAutoValidatedThisSession = true;
-    await _runValidation(apiKey, showSnackbar: true);
+    _syncAiStatus();
   }
 
-  /// Shared validation runner used by both the Save button and the
-  /// once-per-session auto-validation on screen load.
-  Future<ValidationResult> _runValidation(
-    String apiKey, {
-    required bool showSnackbar,
-  }) async {
-    _updateAiStatus('checking');
+  Future<void> _validateOrKey(String key, {bool announce = true}) async {
+    setState(() => _orStatus = KeyStatus.checking);
+    final result = await _service.validateOpenRouterKey(key);
+    setState(() {
+      _orStatus = _toKeyStatus(result);
+    });
+    if (announce) {
+      _syncAiStatus();
+      _showSnackBar(_orSnackLabel(result));
+    }
+  }
 
-    final result = await _service.validateApiKey(apiKey);
+  Future<void> _validateGroqKey(String key, {bool announce = true}) async {
+    setState(() => _groqStatus = KeyStatus.checking);
+    final result = await _service.validateGroqKey(key);
+    setState(() {
+      _groqStatus = _toKeyStatus(result);
+    });
+    if (announce) {
+      _syncAiStatus();
+      _showSnackBar(_groqSnackLabel(result));
+    }
+  }
 
-    _updateAiStatus(switch (result) {
-      ValidationResult.valid => 'active',
-      ValidationResult.unknown => 'active', // accepted but unconfirmed
-      _ => 'inactive',
+  Future<void> _validateGeminiKey(String key, {bool announce = true}) async {
+    setState(() => _geminiStatus = KeyStatus.checking);
+    final result = await _service.validateGeminiKey(key);
+    setState(() {
+      _geminiStatus = _toKeyStatus(result);
+    });
+    if (announce) {
+      _showSnackBar(_geminiSnackLabel(result));
+    }
+  }
+
+  KeyStatus _toKeyStatus(ValidationResult r) => switch (r) {
+    ValidationResult.valid        => KeyStatus.valid,
+    ValidationResult.invalid      => KeyStatus.invalid,
+    ValidationResult.networkError => KeyStatus.networkError,
+    ValidationResult.unknown      => KeyStatus.valid, // accepted; treat as valid
+  };
+
+  void _syncAiStatus() {
+    final anyActive =
+        _orStatus == KeyStatus.valid || _groqStatus == KeyStatus.valid;
+    final anyChecking =
+        _orStatus == KeyStatus.checking || _groqStatus == KeyStatus.checking;
+
+    aiStatusNotifier.value = anyChecking
+        ? 'checking'
+        : anyActive
+            ? 'active'
+            : 'inactive';
+    setState(() {});
+  }
+
+  // ── Model ping ────────────────────────────────────────────────────────────
+
+  Future<void> _pingModel() async {
+    final modelId = _selectedModelId;
+    if (modelId == null) return;
+
+    final apiKey = _selectedModelProvider == ModelProvider.groq
+        ? _groqKeyCtrl.text.trim()
+        : _orKeyCtrl.text.trim();
+
+    setState(() {
+      _isPinging       = true;
+      _modelPingResult = null;
     });
 
-    if (showSnackbar) {
-      _showSnackBar(switch (result) {
-        ValidationResult.valid => 'Settings saved — API key is valid',
-        ValidationResult.invalid => 'Saved, but API key seems invalid',
-        ValidationResult.networkError =>
-          'Saved, but could not connect to verify the key',
-        ValidationResult.unknown =>
-          'Settings saved — could not fully verify right now, but key was accepted',
-      });
-    }
+    final result = await _service.pingModel(
+      modelId:  modelId,
+      provider: _selectedModelProvider,
+      apiKey:   apiKey,
+    );
 
-    return result;
+    setState(() {
+      _isPinging       = false;
+      _modelPingResult = result;
+    });
   }
 
-  // ---------------------------------------------------------------------------
-  // SnackBar helper
-  // ---------------------------------------------------------------------------
+  // ── Save ──────────────────────────────────────────────────────────────────
+
+  Future<void> _save() async {
+    setState(() => _isSaving = true);
+
+    await _service.saveAllSettings(
+      openRouterKey:   _orKeyCtrl.text.trim(),
+      groqKey:         _groqKeyCtrl.text.trim(),
+      geminiKey:       _geminiKeyCtrl.text.trim(),
+      modelId:         _selectedModelId,
+      modelProvider:   _selectedModelProvider,
+      embeddingMode:   _embeddingMode,
+      indexingTrigger: _indexingTrigger,
+    );
+
+    // Validate all non-empty keys after save
+    await _autoValidateAll();
+
+    setState(() => _isSaving = false);
+    _showSnackBar('Settings saved');
+  }
+
+  // ── Snack labels ──────────────────────────────────────────────────────────
+
+  String _orSnackLabel(ValidationResult r) => switch (r) {
+    ValidationResult.valid        => 'OpenRouter key is valid ✓',
+    ValidationResult.invalid      => 'OpenRouter key is invalid',
+    ValidationResult.networkError => 'Could not reach OpenRouter',
+    ValidationResult.unknown      => 'OpenRouter key accepted',
+  };
+
+  String _groqSnackLabel(ValidationResult r) => switch (r) {
+    ValidationResult.valid        => 'Groq key is valid ✓',
+    ValidationResult.invalid      => 'Groq key is invalid',
+    ValidationResult.networkError => 'Could not reach Groq',
+    ValidationResult.unknown      => 'Groq key accepted',
+  };
+
+  String _geminiSnackLabel(ValidationResult r) => switch (r) {
+    ValidationResult.valid        => 'Gemini key is valid ✓',
+    ValidationResult.invalid      => 'Gemini key is invalid',
+    ValidationResult.networkError => 'Could not reach Google',
+    ValidationResult.unknown      => 'Gemini key accepted',
+  };
 
   void _showSnackBar(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
@@ -293,135 +334,121 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  // ---------------------------------------------------------------------------
-  // Refresh helper (model list + optional re-validation)
-  // ---------------------------------------------------------------------------
-
-  Future<void> _refreshModels() async {
-    await _fetchModels();
-    final apiKey = _apiKeyController.text.trim();
-    if (apiKey.isNotEmpty && !_hasAutoValidatedThisSession) {
-      final result = await _runValidation(apiKey, showSnackbar: false);
-      if (result != ValidationResult.networkError) {
-        _hasAutoValidatedThisSession = true;
-      }
-    }
-  }
-
-  // ---------------------------------------------------------------------------
-  // Build
-  // ---------------------------------------------------------------------------
+  // ── Build ─────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(
-          'Settings',
-          style: Theme.of(context).textTheme.headlineMedium,
-        ),
+        title: Text('Settings',
+            style: Theme.of(context).textTheme.headlineMedium),
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : ListView(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 40),
               children: [
-                AiProviderSection(
-                  isProviderOpen: _isProviderOpen,
-                  onProviderTap: () async {
-                    setState(() => _isProviderOpen = true);
-                    await showModalBottomSheet<void>(
-                      context: context,
-                      backgroundColor: AppColors.paper,
-                      shape: const RoundedRectangleBorder(
-                        borderRadius: BorderRadius.vertical(
-                          top: Radius.circular(16),
-                        ),
-                      ),
-                      builder: (_) => const ProviderSheet(),
-                    );
-                    if (mounted) setState(() => _isProviderOpen = false);
+                // ── API Keys section ────────────────────────────────────────
+                ApiKeysSection(
+                  orKeyCtrl:           _orKeyCtrl,
+                  obscureOr:           _obscureOr,
+                  onToggleObscureOr:   () => setState(() => _obscureOr = !_obscureOr),
+                  orStatus:            _orStatus,
+                  onValidateOr:        () {
+                    final k = _orKeyCtrl.text.trim();
+                    if (k.isNotEmpty) _validateOrKey(k);
                   },
-                  apiKeyController: _apiKeyController,
-                  obscureApiKey: _obscureApiKey,
-                  onToggleObscureApiKey: () =>
-                      setState(() => _obscureApiKey = !_obscureApiKey),
-                  groqApiKeyController: _groqApiKeyController,
-                  obscureGroqApiKey: _obscureGroqApiKey,
-                  onToggleObscureGroqApiKey: () =>
-                      setState(() => _obscureGroqApiKey = !_obscureGroqApiKey),
-                  onGroqKeyChanged: (_) =>
-                      setState(() {}), // allow re-fetch with new key
+                  groqKeyCtrl:         _groqKeyCtrl,
+                  obscureGroq:         _obscureGroq,
+                  onToggleObscureGroq: () => setState(() => _obscureGroq = !_obscureGroq),
+                  groqStatus:          _groqStatus,
+                  onValidateGroq:      () {
+                    final k = _groqKeyCtrl.text.trim();
+                    if (k.isNotEmpty) _validateGroqKey(k);
+                  },
+                  geminiKeyCtrl:         _geminiKeyCtrl,
+                  obscureGemini:         _obscureGemini,
+                  onToggleObscureGemini: () => setState(() => _obscureGemini = !_obscureGemini),
+                  geminiStatus:          _geminiStatus,
+                  onValidateGemini:      () {
+                    final k = _geminiKeyCtrl.text.trim();
+                    if (k.isNotEmpty) _validateGeminiKey(k);
+                  },
                 ),
+
                 const SizedBox(height: 24),
 
+                // ── Model section ───────────────────────────────────────────
                 ModelSection(
-                  isModelsLoading: _isModelsLoading,
+                  isModelsLoading:  _isModelsLoading,
                   modelsFetchError: _modelsFetchError,
-                  onRefresh: _refreshModels,
-                  searchController: _modelSearchController,
-                  onSearchChanged: (v) => setState(() => _searchQuery = v),
-                  freeOnly: _freeOnly,
-                  onFreeOnlyChanged: (v) => setState(() => _freeOnly = v),
-                  allModels: _allModels,
-                  filteredModels: _filteredModels,
-                  fetchWarnings: _modelFetchWarnings,
-                  selectedModelId: _selectedModelId,
-                  onSelectModel: (id) async {
-                    final model = _allModels.firstWhere((m) => m.id == id);
-                    setState(() {
-                      _selectedModelId = id;
-                      _selectedModelProvider = model.provider;
-                    });
-                    await _service.saveModelId(id);
-                    await _service.saveModelProvider(model.provider);
-                  },
+                  onRefresh:        _refreshModels,
+                  searchController: _modelSearchCtrl,
+                  onSearchChanged:  (v) => setState(() => _searchQuery = v),
+                  freeOnly:         _freeOnly,
+                  onFreeOnlyChanged:(v) => setState(() => _freeOnly = v),
+                  allModels:        _allModels,
+                  filteredModels:   _filteredModels,
+                  fetchWarnings:    _modelFetchWarnings,
+                  selectedModelId:  _selectedModelId,
+                  onSelectModel:    _handleModelSelect,
+                  // ping
+                  isPinging:        _isPinging,
+                  pingResult:       _modelPingResult,
+                  onPing:           _pingModel,
                 ),
+
                 const SizedBox(height: 24),
 
-                // ── Save button ──────────────────────────────────────────
-                ElevatedButton(
-                  onPressed: _aiStatus == 'checking' ? null : _saveSettings,
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    child: _aiStatus == 'checking'
-                        ? const SizedBox(
-                            height: 16,
-                            width: 16,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Colors.white,
-                            ),
-                          )
-                        : const Text('Save'),
-                  ),
-                ),
+                // ── Save button ─────────────────────────────────────────────
+                SaveButton(isSaving: _isSaving, onSave: _save),
+
                 const SizedBox(height: 24),
 
+                // ── RAG section ─────────────────────────────────────────────
                 RagSection(
-                  embeddingMode: _embeddingMode,
-                  onEmbeddingModeChanged: (v) async {
-                    setState(() => _embeddingMode = v);
-                    await _service.saveEmbeddingMode(v);
-                  },
-                  embeddingApiKeyController: _embeddingApiKeyController,
-                  obscureEmbeddingKey: _obscureEmbeddingKey,
-                  onToggleObscureEmbeddingKey: () => setState(
-                    () => _obscureEmbeddingKey = !_obscureEmbeddingKey,
-                  ),
-                  onEmbeddingApiKeyChanged: (v) =>
-                      _service.saveEmbeddingApiKey(v.trim()),
-                  indexingTrigger: _indexingTrigger,
-                  onIndexingTriggerChanged: (v) async {
-                    setState(() => _indexingTrigger = v);
-                    await _service.saveIndexingTrigger(v);
-                  },
+                  embeddingMode:           _embeddingMode,
+                  onEmbeddingModeChanged:  (v) => setState(() => _embeddingMode = v),
+                  embeddingApiKeyController: _geminiKeyCtrl,
+                  obscureEmbeddingKey:     _obscureGemini,
+                  onToggleObscureEmbeddingKey:
+                      () => setState(() => _obscureGemini = !_obscureGemini),
+                  onEmbeddingApiKeyChanged: (v) {},  // saved on Save press
+                  indexingTrigger:         _indexingTrigger,
+                  onIndexingTriggerChanged:(v) => setState(() => _indexingTrigger = v),
                 ),
+
                 const SizedBox(height: 24),
 
-                StatusBadge(aiStatus: _aiStatus),
+                // ── Health dashboard ────────────────────────────────────────
+                HealthDashboard(
+                  orStatus:     _orStatus,
+                  groqStatus:   _groqStatus,
+                  geminiStatus: _geminiStatus,
+                  aiStatus:     _aiStatus,
+                  pingResult:   _modelPingResult,
+                  selectedModelId: _selectedModelId,
+                ),
+
+                const SizedBox(height: 8),
               ],
             ),
     );
+  }
+
+  Future<void> _handleModelSelect(String id) async {
+    final model = _allModels.firstWhere((m) => m.id == id);
+    setState(() {
+      _selectedModelId       = id;
+      _selectedModelProvider = model.provider;
+      _modelPingResult       = null; // reset ping on new model
+    });
+    await _service.saveModelId(id);
+    await _service.saveModelProvider(model.provider);
+  }
+
+  Future<void> _refreshModels() async {
+    await _fetchModels();
+    await _autoValidateAll();
   }
 }

@@ -51,6 +51,7 @@ class GlossyApp extends StatelessWidget {
   static ThemeData _buildTheme() {
     return ThemeData(
       useMaterial3: true,
+      textTheme: _textTheme,
       scaffoldBackgroundColor: AppColors.paper,
       colorScheme: const ColorScheme.light(
         primary: AppColors.primary,
@@ -97,7 +98,6 @@ class GlossyApp extends StatelessWidget {
           borderSide: const BorderSide(color: AppColors.primary, width: 1.5),
         ),
       ),
-      textTheme: _textTheme,
     );
   }
 
