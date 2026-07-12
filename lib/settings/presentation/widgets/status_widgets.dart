@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import '../app_colors.dart';
-import 'settings_models.dart';
+import '../../../app_colors.dart';
+import '../../data/models/settings_models.dart';
 
 // ---------------------------------------------------------------------------
 // Health Dashboard — shows live status of every service at a glance.
@@ -45,9 +45,9 @@ class HealthDashboard extends StatelessWidget {
           children: [
             Expanded(
               child: _HealthTile(
-                label:     'OpenRouter',
-                sublabel:  'LLM provider',
-                status:    orStatus,
+                label: 'OpenRouter',
+                sublabel: 'LLM provider',
+                status: orStatus,
                 iconLabel: 'OR',
                 iconColor: AppColors.primary,
               ),
@@ -55,9 +55,9 @@ class HealthDashboard extends StatelessWidget {
             const SizedBox(width: 10),
             Expanded(
               child: _HealthTile(
-                label:     'Groq',
-                sublabel:  'Fast inference',
-                status:    groqStatus,
+                label: 'Groq',
+                sublabel: 'Fast inference',
+                status: groqStatus,
                 iconLabel: 'GQ',
                 iconColor: const Color(0xFFF55036),
               ),
@@ -69,9 +69,9 @@ class HealthDashboard extends StatelessWidget {
           children: [
             Expanded(
               child: _HealthTile(
-                label:     'Gemini',
-                sublabel:  'Embeddings',
-                status:    geminiStatus,
+                label: 'Gemini',
+                sublabel: 'Embeddings',
+                status: geminiStatus,
                 iconLabel: 'GM',
                 iconColor: const Color(0xFF4285F4),
               ),
@@ -79,7 +79,7 @@ class HealthDashboard extends StatelessWidget {
             const SizedBox(width: 10),
             Expanded(
               child: _ModelHealthTile(
-                pingResult:      pingResult,
+                pingResult: pingResult,
                 selectedModelId: selectedModelId,
               ),
             ),
@@ -113,18 +113,18 @@ class _HealthTile extends StatelessWidget {
   final Color iconColor;
 
   Color get _dotColor => switch (status) {
-    KeyStatus.idle         => AppColors.muted,
-    KeyStatus.checking     => AppColors.warning,
-    KeyStatus.valid        => AppColors.success,
-    KeyStatus.invalid      => AppColors.danger,
+    KeyStatus.idle => AppColors.muted,
+    KeyStatus.checking => AppColors.warning,
+    KeyStatus.valid => AppColors.success,
+    KeyStatus.invalid => AppColors.danger,
     KeyStatus.networkError => AppColors.warning,
   };
 
   String get _statusText => switch (status) {
-    KeyStatus.idle         => 'Not configured',
-    KeyStatus.checking     => 'Checking...',
-    KeyStatus.valid        => 'Active',
-    KeyStatus.invalid      => 'Invalid key',
+    KeyStatus.idle => 'Not configured',
+    KeyStatus.checking => 'Checking...',
+    KeyStatus.valid => 'Active',
+    KeyStatus.invalid => 'Invalid key',
     KeyStatus.networkError => 'Unreachable',
   };
 
@@ -135,9 +135,7 @@ class _HealthTile extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: isActive
-            ? _dotColor.withValues(alpha: 0.06)
-            : AppColors.paper,
+        color: isActive ? _dotColor.withValues(alpha: 0.06) : AppColors.paper,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
           color: isActive
@@ -172,7 +170,10 @@ class _HealthTile extends StatelessWidget {
               ),
               const Spacer(),
               // Pulsing dot
-              _StatusDot(color: _dotColor, isChecking: status == KeyStatus.checking),
+              _StatusDot(
+                color: _dotColor,
+                isChecking: status == KeyStatus.checking,
+              ),
             ],
           ),
           const SizedBox(height: 8),
@@ -212,21 +213,21 @@ class _ModelHealthTile extends StatelessWidget {
   final String? selectedModelId;
 
   Color get _color => switch (pingResult) {
-    null                          => AppColors.muted,
-    ModelPingResult.success       => AppColors.success,
+    null => AppColors.muted,
+    ModelPingResult.success => AppColors.success,
     ModelPingResult.emptyResponse => AppColors.warning,
-    ModelPingResult.noKey         => AppColors.muted,
-    _                             => AppColors.danger,
+    ModelPingResult.noKey => AppColors.muted,
+    _ => AppColors.danger,
   };
 
   String get _statusText => switch (pingResult) {
-    null                          => 'Not tested',
-    ModelPingResult.success       => 'Responding',
+    null => 'Not tested',
+    ModelPingResult.success => 'Responding',
     ModelPingResult.emptyResponse => 'Empty reply',
-    ModelPingResult.failed        => 'Failed',
-    ModelPingResult.unauthorized  => 'Auth error',
-    ModelPingResult.networkError  => 'Unreachable',
-    ModelPingResult.noKey         => 'No key',
+    ModelPingResult.failed => 'Failed',
+    ModelPingResult.unauthorized => 'Auth error',
+    ModelPingResult.networkError => 'Unreachable',
+    ModelPingResult.noKey => 'No key',
   };
 
   @override
@@ -277,11 +278,7 @@ class _ModelHealthTile extends StatelessWidget {
           const SizedBox(height: 2),
           Text(
             _statusText,
-            style: TextStyle(
-              fontFamily: 'Inter',
-              fontSize: 10,
-              color: _color,
-            ),
+            style: TextStyle(fontFamily: 'Inter', fontSize: 10, color: _color),
           ),
         ],
       ),
@@ -297,9 +294,17 @@ class _OverallStatusBar extends StatelessWidget {
   final String aiStatus;
 
   (Color, String, IconData) get _state => switch (aiStatus) {
-    'active'   => (AppColors.success, 'All systems operational', Icons.check_circle_rounded),
+    'active' => (
+      AppColors.success,
+      'All systems operational',
+      Icons.check_circle_rounded,
+    ),
     'checking' => (AppColors.warning, 'Verifying services...', Icons.sync),
-    _          => (AppColors.danger, 'Service offline — add a valid API key', Icons.error_outline),
+    _ => (
+      AppColors.danger,
+      'Service offline — add a valid API key',
+      Icons.error_outline,
+    ),
   };
 
   @override
@@ -366,9 +371,10 @@ class _StatusDotState extends State<_StatusDot>
       vsync: this,
       duration: const Duration(milliseconds: 800),
     );
-    _anim = Tween<double>(begin: 0.4, end: 1.0).animate(
-      CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut),
-    );
+    _anim = Tween<double>(
+      begin: 0.4,
+      end: 1.0,
+    ).animate(CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut));
     if (widget.isChecking) _ctrl.repeat(reverse: true);
   }
 
@@ -420,9 +426,9 @@ class StatusBadge extends StatelessWidget {
   final String aiStatus;
 
   static const _statuses = [
-    (label: 'OFF',      color: AppColors.danger,  key: 'inactive'),
-    (label: 'CHECKING', color: AppColors.warning,  key: 'checking'),
-    (label: 'ACTIVE',   color: AppColors.success,  key: 'active'),
+    (label: 'OFF', color: AppColors.danger, key: 'inactive'),
+    (label: 'CHECKING', color: AppColors.warning, key: 'checking'),
+    (label: 'ACTIVE', color: AppColors.success, key: 'active'),
   ];
 
   @override
@@ -433,8 +439,8 @@ class StatusBadge extends StatelessWidget {
           if (i > 0) const SizedBox(width: 10),
           Expanded(
             child: StatusBox(
-              label:    _statuses[i].label,
-              color:    _statuses[i].color,
+              label: _statuses[i].label,
+              color: _statuses[i].color,
               isActive: aiStatus == _statuses[i].key,
             ),
           ),

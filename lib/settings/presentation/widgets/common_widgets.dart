@@ -1,15 +1,8 @@
 import 'package:flutter/material.dart';
-import '../app_colors.dart';
-
-// ---------------------------------------------------------------------------
-// Small, generic widgets shared across settings sections.
-// ---------------------------------------------------------------------------
-
-// ── Section label ────────────────────────────────────────────────────────────
+import '../../../../app_colors.dart';
 
 class SectionLabel extends StatelessWidget {
   const SectionLabel(this.text, {super.key});
-
   final String text;
 
   @override
@@ -26,8 +19,6 @@ class SectionLabel extends StatelessWidget {
     );
   }
 }
-
-// ── Segmented toggle ──────────────────────────────────────────────────────────
 
 class SegmentedToggle<T> extends StatelessWidget {
   const SegmentedToggle({
@@ -86,8 +77,6 @@ class SegmentedToggle<T> extends StatelessWidget {
   }
 }
 
-// ── Info / error banner ───────────────────────────────────────────────────────
-
 class InfoBanner extends StatelessWidget {
   const InfoBanner({
     super.key,
@@ -112,7 +101,9 @@ class InfoBanner extends StatelessWidget {
         children: [
           Icon(icon, color: color),
           const SizedBox(width: 8),
-          Expanded(child: Text(message, style: TextStyle(color: color))),
+          Expanded(
+            child: Text(message, style: TextStyle(color: color)),
+          ),
         ],
       ),
     );

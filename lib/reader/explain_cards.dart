@@ -114,7 +114,10 @@ class ContextCard extends StatelessWidget {
           const CircleAvatar(
             radius: 12,
             backgroundColor: AppColors.secondary,
-            child: Text('C', style: TextStyle(fontSize: 11, color: AppColors.ink)),
+            child: Text(
+              'C',
+              style: TextStyle(fontSize: 11, color: AppColors.ink),
+            ),
           ),
           const SizedBox(width: 10),
           Expanded(
@@ -165,7 +168,10 @@ class ErrorCard extends StatelessWidget {
         children: [
           Text(
             message,
-            style: const TextStyle(fontFamily: 'Inter', color: AppColors.danger),
+            style: const TextStyle(
+              fontFamily: 'Inter',
+              color: AppColors.danger,
+            ),
           ),
           const SizedBox(height: 8),
           TextButton(onPressed: onRetry, child: const Text('Retry')),

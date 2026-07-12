@@ -1,9 +1,37 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
 import '../app_colors.dart';
 import '../library/book.dart';
-import '../settings/settings_service.dart';
+import '../settings/data/services/settings_service.dart';
 import '../rag/pdf_text_extractor.dart';
 import 'glossy_explain_sheet.dart';
+import 'glossy_selection_menu.dart';
+
+// ---------------------------------------------------------------------------
+// ReaderScreen — REWRITTEN
+// ---------------------------------------------------------------------------
+// WHY THE REWRITE (not just a patch):
+// The previous version extracted the whole PDF to plain text and displayed
+// it as a single SelectableText inside a SingleChildScrollView. That
+// single choice was the root cause of THREE separate reported bugs:
+//   1. No real pagination -> user couldn't move to the next "page" at all.
+//   2. Garbled text on some books -> extraction artifacts were shown
+//      directly to the reader instead of the real, correctly-rendered PDF.
+//   3. Selection toolbar looked wrong / cluttered -> relying on the OS
+//      native/Adaptive toolbar pulls in every "Process Text" app installed
+//      on the phone (ChatGPT, Grok, Perplexity, etc.), burying our own
+//      button.
+//
+// Switching to `syncfusion_flutter_pdfviewer` (SfPdfViewer) renders the
+// ACTUAL pdf pages (like Adobe Reader would), giving us free, correct
+// scrolling/pagination and pixel-perfect text regardless of font quirks —
+// while a fully custom GlossySelectionMenu replaces the native toolbar.
+//
+// ADD THIS DEPENDENCY to pubspec.yaml (same version family as your
+// existing syncfusion_flutter_pdf):
+//   syncfusion_flutter_pdfviewer: ^28.1.33
+// ---------------------------------------------------------------------------
 
 class ReaderScreen extends StatefulWidget {
   const ReaderScreen({super.key, required this.book});
@@ -14,50 +42,46 @@ class ReaderScreen extends StatefulWidget {
 }
 
 class _ReaderScreenState extends State<ReaderScreen> {
-  static const _charsPerPage = 1400;
-
-  final _extractor = const PdfTextExtractor();
   final _settingsService = SettingsService();
+  final _extractor = const PdfTextExtractor();
+  final PdfViewerController _pdfController = PdfViewerController();
 
-  bool _isLoading = true;
-  List<String> _pages = [];
-  int _pageIndex = 0;
   String _modelLabel = '';
+  int _pageCount = 0;
+  int _currentPage = 1;
+
+  String _selectedText = '';
+  Offset? _selectionAnchor;
 
   @override
   void initState() {
     super.initState();
-    _load();
+    _loadSettings();
   }
 
-  Future<void> _load() async {
-    final text = await _extractor.extractText(widget.book.pdfPath);
+  Future<void> _loadSettings() async {
     final saved = await _settingsService.loadSavedSettings();
-    final pages = _paginate(text);
+    if (mounted) setState(() => _modelLabel = saved.modelId ?? '');
+  }
+
+  void _clearSelection() {
+    _pdfController.clearSelection();
     setState(() {
-      _pages = pages;
-      _pageIndex = pages.isEmpty
-          ? 0
-          : (widget.book.progress * pages.length).floor().clamp(0, pages.length - 1);
-      _modelLabel = saved.modelId ?? '';
-      _isLoading = false;
+      _selectedText = '';
+      _selectionAnchor = null;
     });
   }
 
-  List<String> _paginate(String text) {
-    final clean = text.replaceAll(RegExp(r'\s+'), ' ').trim();
-    if (clean.isEmpty) return [];
-    final pages = <String>[];
-    var start = 0;
-    while (start < clean.length) {
-      final end = (start + _charsPerPage).clamp(0, clean.length);
-      pages.add(clean.substring(start, end));
-      start = end;
-    }
-    return pages;
-  }
+  Future<void> _showExplainSheet(String selectedText) async {
+    // Best-effort: grab the current page's text for extra AI context.
+    // Runs in a background isolate (see pdf_text_extractor.dart) so it
+    // never blocks the UI.
+    final pageText = await _extractor.extractPageText(
+      widget.book.pdfPath,
+      _currentPage - 1,
+    );
 
-  void _showExplainSheet(String selectedText) {
+    if (!mounted) return;
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -66,87 +90,80 @@ class _ReaderScreenState extends State<ReaderScreen> {
         bookId: widget.book.pdfPath,
         modelLabel: _modelLabel,
         selectedText: selectedText,
-        surroundingPageText: _pages.isNotEmpty ? _pages[_pageIndex] : '',
+        surroundingPageText: pageText.isNotEmpty ? pageText : selectedText,
       ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    final pageText = _pages.isNotEmpty ? _pages[_pageIndex] : '';
-    final progress = _pages.isEmpty ? 0.0 : (_pageIndex + 1) / _pages.length;
-
     return Scaffold(
       backgroundColor: AppColors.paper,
       appBar: AppBar(
         leading: const BackButton(),
         title: Text(
-          '${widget.book.title.toUpperCase()} · PG ${_pageIndex + 1}',
-          style: const TextStyle(fontFamily: 'JetBrainsMono', fontSize: 12, color: AppColors.muted),
+          '${widget.book.title.toUpperCase()} · PG $_currentPage'
+          '${_pageCount > 0 ? ' / $_pageCount' : ''}',
+          style: const TextStyle(
+            fontFamily: 'JetBrainsMono',
+            fontSize: 12,
+            color: AppColors.muted,
+          ),
         ),
         centerTitle: true,
-        actions: const [IconButton(icon: Icon(Icons.more_horiz), onPressed: null)],
-      ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : Column(
-        children: [
-          Expanded(
-            child: SingleChildScrollView(
-              padding: const EdgeInsets.all(20),
-              child: SelectableText(
-                pageText,
-                style: const TextStyle(fontFamily: 'Inter', fontSize: 16, height: 1.6, color: AppColors.ink),
-                contextMenuBuilder: (context, state) {
-                  final selected =
-                  state.textEditingValue.selection.textInside(state.textEditingValue.text);
-                  final buttons = <ContextMenuButtonItem>[
-                    ...state.contextMenuButtonItems,
-                    if (selected.trim().isNotEmpty)
-                      ContextMenuButtonItem(
-                        label: 'Glossy',
-                        onPressed: () {
-                          state.hideToolbar();
-                          _showExplainSheet(selected);
-                        },
-                      ),
-                  ];
-                  return AdaptiveTextSelectionToolbar.buttonItems(
-                    anchors: state.contextMenuAnchors,
-                    buttonItems: buttons,
-                  );
-                },
-              ),
-            ),
-          ),
-          _buildFooter(progress),
+        actions: const [
+          IconButton(icon: Icon(Icons.more_horiz), onPressed: null),
         ],
       ),
-    );
-  }
-
-  Widget _buildFooter(double progress) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
-      child: Row(
+      body: Stack(
         children: [
-          Text('${_pageIndex + 1} / ${_pages.length}',
-              style: const TextStyle(fontFamily: 'JetBrainsMono', fontSize: 11, color: AppColors.muted)),
-          const SizedBox(width: 12),
-          Expanded(
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(2),
-              child: LinearProgressIndicator(
-                value: progress,
-                minHeight: 3,
-                backgroundColor: AppColors.secondary,
-                valueColor: const AlwaysStoppedAnimation(AppColors.primary),
-              ),
-            ),
+          SfPdfViewer.file(
+            File(widget.book.pdfPath),
+            controller: _pdfController,
+            enableTextSelection: true,
+            canShowScrollHead: true,
+            canShowScrollStatus: true,
+            onDocumentLoaded: (details) {
+              final total = details.document.pages.count;
+              setState(() {
+                _pageCount = total;
+                if (widget.book.progress > 0 && total > 0) {
+                  final target = (widget.book.progress * total).round().clamp(
+                    1,
+                    total,
+                  );
+                  _pdfController.jumpToPage(target);
+                }
+              });
+            },
+            onPageChanged: (details) {
+              setState(() => _currentPage = details.newPageNumber);
+            },
+            onTextSelectionChanged: (details) {
+              final text = details.selectedText;
+              if (text == null || text.trim().isEmpty) {
+                setState(() {
+                  _selectedText = '';
+                  _selectionAnchor = null;
+                });
+                return;
+              }
+              setState(() {
+                _selectedText = text;
+                _selectionAnchor = details.globalSelectedRegion?.topCenter;
+              });
+            },
           ),
-          const SizedBox(width: 12),
-          Text('${(progress * 100).toStringAsFixed(1)}%',
-              style: const TextStyle(fontFamily: 'JetBrainsMono', fontSize: 11, color: AppColors.muted)),
+          if (_selectedText.isNotEmpty && _selectionAnchor != null)
+            GlossySelectionMenu(
+              anchor: _selectionAnchor!,
+              selectedText: _selectedText,
+              onGlossy: () {
+                final text = _selectedText;
+                _clearSelection();
+                _showExplainSheet(text);
+              },
+            ),
         ],
       ),
     );

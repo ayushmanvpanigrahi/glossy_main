@@ -18,7 +18,11 @@ class FollowUpBar extends StatelessWidget {
   final bool isSending;
   final ValueChanged<String> onSend;
 
-  static const _quickReplies = ['Simpler please', 'Hindi only', 'Give an example'];
+  static const _quickReplies = [
+    'Simpler please',
+    'Hindi only',
+    'Give an example',
+  ];
 
   @override
   Widget build(BuildContext context) {

@@ -27,10 +27,7 @@ class IndexingStatusService {
       _statusNotifier.value[pdfPath] ?? BookIndexStatus.notIndexed;
 
   void setStatus(String pdfPath, BookIndexStatus status) {
-    _statusNotifier.value = {
-      ..._statusNotifier.value,
-      pdfPath: status,
-    };
+    _statusNotifier.value = {..._statusNotifier.value, pdfPath: status};
   }
 
   void clearStatus(String pdfPath) {

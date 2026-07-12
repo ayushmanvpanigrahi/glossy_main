@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
-import '../settings/settings_service.dart';
-import '../settings/settings_models.dart';
+import '../settings/data/services/settings_service.dart';
+import '../settings/data/models/settings_models.dart';
 import '../rag/rag_service.dart';
 import '../rag/embedding_service.dart';
 
@@ -31,11 +31,13 @@ class ChatTurn {
 
 class AiExplainService {
   AiExplainService({SettingsService? settingsService})
-      : _settingsService = settingsService ?? SettingsService();
+    : _settingsService = settingsService ?? SettingsService();
 
   final SettingsService _settingsService;
-  static const _openRouterEndpoint = 'https://openrouter.ai/api/v1/chat/completions';
-  static const _groqEndpoint = 'https://api.groq.com/openai/v1/chat/completions';
+  static const _openRouterEndpoint =
+      'https://openrouter.ai/api/v1/chat/completions';
+  static const _groqEndpoint =
+      'https://api.groq.com/openai/v1/chat/completions';
 
   static const _explainSystemPrompt = '''
 You are Glossy AI, embedded in a book reader app. The user selected a
@@ -70,25 +72,25 @@ Respond ONLY with a JSON object, no markdown fences, no preamble:
       {
         'role': 'user',
         'content':
-        'Page context:\n$surroundingPageText\n\nSelected passage:\n"$selectedText"',
+            'Page context:\n$surroundingPageText\n\nSelected passage:\n"$selectedText"',
       },
     ];
 
     // Ask for strict JSON mode first. Not every model/provider supports
     // response_format, so if the provider rejects the param (HTTP 400
     // mentioning it), retry once without it rather than failing outright.
-    var response = await _postWithRetry(
-      endpoint,
-      apiKey,
-      {'model': modelId, 'messages': messages, 'response_format': {'type': 'json_object'}},
-    );
+    var response = await _postWithRetry(endpoint, apiKey, {
+      'model': modelId,
+      'messages': messages,
+      'response_format': {'type': 'json_object'},
+    });
 
-    if (response.statusCode == 400 && response.body.contains('response_format')) {
-      response = await _postWithRetry(
-        endpoint,
-        apiKey,
-        {'model': modelId, 'messages': messages},
-      );
+    if (response.statusCode == 400 &&
+        response.body.contains('response_format')) {
+      response = await _postWithRetry(endpoint, apiKey, {
+        'model': modelId,
+        'messages': messages,
+      });
     }
 
     if (response.statusCode != 200) {
@@ -138,7 +140,10 @@ Respond ONLY with a JSON object, no markdown fences, no preamble:
           embeddingService: GeminiEmbeddingService(embeddingApiKey),
         );
         if (await ragService.isIndexed(bookId)) {
-          ragContext = await ragService.retrieveContext(question, bookId: bookId);
+          ragContext = await ragService.retrieveContext(
+            question,
+            bookId: bookId,
+          );
         }
       }
     } catch (_) {
@@ -151,7 +156,7 @@ Respond ONLY with a JSON object, no markdown fences, no preamble:
       {
         'role': 'system',
         'content':
-        'You are Glossy AI, helping a reader understand a book. Reply '
+            'You are Glossy AI, helping a reader understand a book. Reply '
             'in Hinglish, briefly. The reader selected this passage: '
             '"$selectedText".'
             '${ragContext.isNotEmpty ? '\n\nRelevant excerpts from elsewhere in the book:\n$ragContext' : ''}',
@@ -160,11 +165,10 @@ Respond ONLY with a JSON object, no markdown fences, no preamble:
       {'role': 'user', 'content': question},
     ];
 
-    final response = await _postWithRetry(
-      endpoint,
-      apiKey,
-      {'model': modelId, 'messages': messages},
-    );
+    final response = await _postWithRetry(endpoint, apiKey, {
+      'model': modelId,
+      'messages': messages,
+    });
 
     if (response.statusCode != 200) {
       throw AiExplainException('Follow-up failed (${response.statusCode})');
@@ -176,21 +180,21 @@ Respond ONLY with a JSON object, no markdown fences, no preamble:
   /// with OpenRouter's free-tier models. Honors a `Retry-After` header if
   /// the provider sends one, otherwise waits a fixed short delay.
   Future<http.Response> _postWithRetry(
-      String endpoint,
-      String apiKey,
-      Map<String, dynamic> body, {
-        int maxRetries = 1,
-      }) async {
+    String endpoint,
+    String apiKey,
+    Map<String, dynamic> body, {
+    int maxRetries = 1,
+  }) async {
     for (var attempt = 0; ; attempt++) {
       final response = await http
           .post(
-        Uri.parse(endpoint),
-        headers: {
-          'Authorization': 'Bearer $apiKey',
-          'Content-Type': 'application/json',
-        },
-        body: jsonEncode(body),
-      )
+            Uri.parse(endpoint),
+            headers: {
+              'Authorization': 'Bearer $apiKey',
+              'Content-Type': 'application/json',
+            },
+            body: jsonEncode(body),
+          )
           .timeout(const Duration(seconds: 30));
 
       if (response.statusCode == 429 && attempt < maxRetries) {
@@ -215,13 +219,17 @@ Respond ONLY with a JSON object, no markdown fences, no preamble:
     // catch that before assuming the success shape.
     if (json['error'] != null) {
       final err = json['error'];
-      final msg = err is Map ? (err['message']?.toString() ?? err.toString()) : err.toString();
+      final msg = err is Map
+          ? (err['message']?.toString() ?? err.toString())
+          : err.toString();
       throw AiExplainException('Provider error: $msg');
     }
 
     final choices = json['choices'] as List?;
     if (choices == null || choices.isEmpty) {
-      throw AiExplainException('No response from model — try again or switch models.');
+      throw AiExplainException(
+        'No response from model — try again or switch models.',
+      );
     }
 
     final message = choices.first['message'] as Map<String, dynamic>?;
@@ -250,7 +258,9 @@ Respond ONLY with a JSON object, no markdown fences, no preamble:
           // fall through
         }
       }
-      throw AiExplainException('Model returned an unexpected format — try again.');
+      throw AiExplainException(
+        'Model returned an unexpected format — try again.',
+      );
     }
   }
 }

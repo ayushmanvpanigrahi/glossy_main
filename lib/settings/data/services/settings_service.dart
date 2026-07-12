@@ -1,32 +1,25 @@
 import 'dart:convert';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:http/http.dart' as http;
-import 'settings_models.dart';
+import '../models/settings_models.dart';
 
 // ---------------------------------------------------------------------------
-// SettingsService
+// SettingsService — persistence & remote API calls.
 // ---------------------------------------------------------------------------
 
 class SettingsService {
   SettingsService({FlutterSecureStorage? storage})
-      : _secureStorage = storage ??
-            const FlutterSecureStorage(
-              aOptions: AndroidOptions(
-                encryptedSharedPreferences: true,
-              ),
-            );
+    : _secureStorage = storage ?? const FlutterSecureStorage();
 
   final FlutterSecureStorage _secureStorage;
 
-  static const apiKeyStorageKey    = 'openrouter_api_key';
-  static const modelStorageKey     = 'openrouter_model';
-  static const embeddingModeKey    = 'rag_embedding_mode';
-  static const indexingTriggerKey  = 'rag_indexing_trigger';
-  static const embeddingApiKeyKey  = 'gemini_embedding_api_key';
-  static const groqApiKeyKey       = 'groq_api_key';
-  static const modelProviderKey    = 'model_provider';
-
-  // ── Storage ──────────────────────────────────────────────────────────────
+  static const apiKeyStorageKey = 'openrouter_api_key';
+  static const modelStorageKey = 'openrouter_model';
+  static const embeddingModeKey = 'rag_embedding_mode';
+  static const indexingTriggerKey = 'rag_indexing_trigger';
+  static const embeddingApiKeyKey = 'gemini_embedding_api_key';
+  static const groqApiKeyKey = 'groq_api_key';
+  static const modelProviderKey = 'model_provider';
 
   Future<SavedSettings> loadSavedSettings() async {
     final results = await Future.wait([
@@ -36,13 +29,17 @@ class SettingsService {
       _secureStorage.read(key: modelProviderKey),
     ]);
     return SavedSettings(
-      apiKey:        results[0],
-      modelId:       results[1],
-      groqApiKey:    results[2],
-      modelProvider: results[3] == 'groq'
-          ? ModelProvider.groq
-          : ModelProvider.openRouter,
+      apiKey: results[0],
+      modelId: results[1],
+      groqApiKey: results[2],
+      modelProvider: _parseProvider(results[3]),
     );
+  }
+
+  ModelProvider _parseProvider(String? value) {
+    if (value == 'groq') return ModelProvider.groq;
+    if (value == 'gemini') return ModelProvider.gemini;
+    return ModelProvider.openRouter;
   }
 
   Future<RagSettings> loadRagSettings() async {
@@ -52,7 +49,7 @@ class SettingsService {
       _secureStorage.read(key: embeddingApiKeyKey),
     ]);
     return RagSettings(
-      embeddingMode:  results[0],
+      embeddingMode: results[0],
       indexingTrigger: results[1],
       embeddingApiKey: results[2],
     );
@@ -61,14 +58,12 @@ class SettingsService {
   Future<void> saveApiKey(String apiKey) =>
       _secureStorage.write(key: apiKeyStorageKey, value: apiKey);
 
-  Future<void> deleteApiKey() =>
-      _secureStorage.delete(key: apiKeyStorageKey);
+  Future<void> deleteApiKey() => _secureStorage.delete(key: apiKeyStorageKey);
 
   Future<void> saveModelId(String modelId) =>
       _secureStorage.write(key: modelStorageKey, value: modelId);
 
-  Future<void> deleteModelId() =>
-      _secureStorage.delete(key: modelStorageKey);
+  Future<void> deleteModelId() => _secureStorage.delete(key: modelStorageKey);
 
   Future<void> saveEmbeddingMode(String mode) =>
       _secureStorage.write(key: embeddingModeKey, value: mode);
@@ -82,13 +77,10 @@ class SettingsService {
   Future<void> saveGroqApiKey(String apiKey) =>
       _secureStorage.write(key: groqApiKeyKey, value: apiKey);
 
-  Future<void> deleteGroqApiKey() =>
-      _secureStorage.delete(key: groqApiKeyKey);
+  Future<void> deleteGroqApiKey() => _secureStorage.delete(key: groqApiKeyKey);
 
   Future<void> saveModelProvider(ModelProvider provider) =>
       _secureStorage.write(key: modelProviderKey, value: provider.name);
-
-  // ── Save all at once ──────────────────────────────────────────────────────
 
   Future<void> saveAllSettings({
     required String openRouterKey,
@@ -127,8 +119,6 @@ class SettingsService {
     await Future.wait(ops);
   }
 
-  // ── Model fetching ────────────────────────────────────────────────────────
-
   Future<List<OpenRouterModel>> fetchModels() async {
     final response = await http
         .get(Uri.parse('https://openrouter.ai/api/v1/models'))
@@ -136,56 +126,103 @@ class SettingsService {
 
     if (response.statusCode != 200) {
       throw SettingsServiceException(
-          'Failed to load models (${response.statusCode})');
+        'Failed to load models (${response.statusCode})',
+      );
     }
 
-    final modelsJson =
-        (jsonDecode(response.body)['data'] as List)
-            .cast<Map<String, dynamic>>();
+    final modelsJson = (jsonDecode(response.body)['data'] as List)
+        .cast<Map<String, dynamic>>();
 
-    final textOnly = modelsJson
-        .where(_isTextOnlyModel)
-        .map(OpenRouterModel.fromJson)
-        .toList()
+    final all = modelsJson.map(OpenRouterModel.fromJson).toList()
       ..sort((a, b) {
         if (a.isFree != b.isFree) return a.isFree ? -1 : 1;
         return a.name.compareTo(b.name);
       });
 
-    return textOnly;
+    return all;
   }
 
   Future<List<OpenRouterModel>> fetchGroqModels(String apiKey) async {
-    final response = await http.get(
-      Uri.parse('https://api.groq.com/openai/v1/models'),
-      headers: {'Authorization': 'Bearer $apiKey'},
-    ).timeout(const Duration(seconds: 10));
+    final response = await http
+        .get(
+          Uri.parse('https://api.groq.com/openai/v1/models'),
+          headers: {'Authorization': 'Bearer $apiKey'},
+        )
+        .timeout(const Duration(seconds: 10));
 
     if (response.statusCode != 200) {
       throw SettingsServiceException(
-          'Failed to load Groq models (${response.statusCode})');
+        'Failed to load Groq models (${response.statusCode})',
+      );
     }
 
-    final data =
-        (jsonDecode(response.body)['data'] as List)
-            .cast<Map<String, dynamic>>();
+    final data = (jsonDecode(response.body)['data'] as List)
+        .cast<Map<String, dynamic>>();
 
     return data
         .where((m) => m['active'] != false)
-        .map((m) => OpenRouterModel(
-              id:       m['id'] as String? ?? '',
-              name:     m['id'] as String? ?? '',
-              isFree:   true,
-              provider: ModelProvider.groq,
-            ))
+        .map(
+          (m) => OpenRouterModel(
+            id: m['id'] as String? ?? '',
+            name: m['id'] as String? ?? '',
+            isFree: false,
+            provider: ModelProvider.groq,
+            type: ModelType.text,
+          ),
+        )
         .toList()
       ..sort((a, b) => a.name.compareTo(b.name));
   }
 
-  Future<ModelFetchResult> fetchAllModels({String? groqApiKey}) async {
-    final errors            = <String>[];
-    var openRouterModels    = <OpenRouterModel>[];
-    var groqModels          = <OpenRouterModel>[];
+  Future<List<OpenRouterModel>> fetchGeminiModels(String apiKey) async {
+    final response = await http
+        .get(
+          Uri.parse(
+            'https://generativelanguage.googleapis.com/v1beta/models?key=$apiKey',
+          ),
+        )
+        .timeout(const Duration(seconds: 10));
+
+    if (response.statusCode != 200) {
+      throw SettingsServiceException(
+        'Failed to load Gemini models (${response.statusCode})',
+      );
+    }
+
+    final data = (jsonDecode(response.body)['models'] as List)
+        .cast<Map<String, dynamic>>();
+
+    return data.map((m) {
+      final name = m['name'] as String? ?? '';
+      final id = name.replaceFirst('models/', '');
+      final displayName = m['displayName'] as String? ?? id;
+      final description = m['description'] as String? ?? '';
+
+      ModelType type = ModelType.text;
+      if (id.contains('embedding')) {
+        type = ModelType.embedding;
+      } else if (description.toLowerCase().contains('embedding')) {
+        type = ModelType.embedding;
+      }
+
+      return OpenRouterModel(
+        id: id,
+        name: displayName,
+        isFree: true,
+        provider: ModelProvider.gemini,
+        type: type,
+      );
+    }).toList()..sort((a, b) => a.name.compareTo(b.name));
+  }
+
+  Future<ModelFetchResult> fetchAllModels({
+    String? groqApiKey,
+    String? geminiApiKey,
+  }) async {
+    final errors = <String>[];
+    var openRouterModels = <OpenRouterModel>[];
+    var groqModels = <OpenRouterModel>[];
+    var geminiModels = <OpenRouterModel>[];
 
     try {
       openRouterModels = await fetchModels();
@@ -205,7 +242,17 @@ class SettingsService {
       }
     }
 
-    final combined = [...openRouterModels, ...groqModels]
+    if (geminiApiKey != null && geminiApiKey.isNotEmpty) {
+      try {
+        geminiModels = await fetchGeminiModels(geminiApiKey);
+      } on SettingsServiceException catch (e) {
+        errors.add('Gemini: ${e.message}');
+      } catch (_) {
+        errors.add('Gemini: could not connect');
+      }
+    }
+
+    final combined = [...openRouterModels, ...groqModels, ...geminiModels]
       ..sort((a, b) {
         if (a.isFree != b.isFree) return a.isFree ? -1 : 1;
         return a.name.compareTo(b.name);
@@ -214,32 +261,19 @@ class SettingsService {
     return ModelFetchResult(models: combined, errors: errors);
   }
 
-  bool _isTextOnlyModel(Map<String, dynamic> model) {
-    final arch = model['architecture'];
-    if (arch == null) return false;
-    final inputMods  = (arch['input_modalities']  as List?) ?? const [];
-    final outputMods = (arch['output_modalities'] as List?) ?? const [];
-    if (!outputMods.contains('text')) return false;
-    if (outputMods.contains('image') || outputMods.contains('audio')) {
-      return false;
-    }
-    if (!inputMods.contains('text')) return false;
-    return true;
-  }
-
-  // ── Validation ────────────────────────────────────────────────────────────
-
   Future<ValidationResult> validateOpenRouterKey(String apiKey) async {
     try {
-      final response = await http.get(
-        Uri.parse('https://openrouter.ai/api/v1/key'),
-        headers: {'Authorization': 'Bearer $apiKey'},
-      ).timeout(const Duration(seconds: 8));
+      final response = await http
+          .get(
+            Uri.parse('https://openrouter.ai/api/v1/key'),
+            headers: {'Authorization': 'Bearer $apiKey'},
+          )
+          .timeout(const Duration(seconds: 8));
 
       return switch (response.statusCode) {
         200 => ValidationResult.valid,
         401 => ValidationResult.invalid,
-        _   => ValidationResult.unknown,
+        _ => ValidationResult.unknown,
       };
     } on http.ClientException {
       return ValidationResult.networkError;
@@ -250,15 +284,17 @@ class SettingsService {
 
   Future<ValidationResult> validateGroqKey(String apiKey) async {
     try {
-      final response = await http.get(
-        Uri.parse('https://api.groq.com/openai/v1/models'),
-        headers: {'Authorization': 'Bearer $apiKey'},
-      ).timeout(const Duration(seconds: 8));
+      final response = await http
+          .get(
+            Uri.parse('https://api.groq.com/openai/v1/models'),
+            headers: {'Authorization': 'Bearer $apiKey'},
+          )
+          .timeout(const Duration(seconds: 8));
 
       return switch (response.statusCode) {
         200 => ValidationResult.valid,
         401 => ValidationResult.invalid,
-        _   => ValidationResult.unknown,
+        _ => ValidationResult.unknown,
       };
     } on http.ClientException {
       return ValidationResult.networkError;
@@ -267,8 +303,6 @@ class SettingsService {
     }
   }
 
-  /// Validates a Gemini API key by calling the embedContent endpoint with a
-  /// tiny probe string. Returns valid/invalid/networkError/unknown.
   Future<ValidationResult> validateGeminiKey(String apiKey) async {
     try {
       final url = Uri.parse(
@@ -292,10 +326,10 @@ class SettingsService {
 
       return switch (response.statusCode) {
         200 => ValidationResult.valid,
-        400 => ValidationResult.valid,   // bad request but key was accepted
+        400 => ValidationResult.valid,
         401 => ValidationResult.invalid,
         403 => ValidationResult.invalid,
-        _   => ValidationResult.unknown,
+        _ => ValidationResult.unknown,
       };
     } on http.ClientException {
       return ValidationResult.networkError;
@@ -304,8 +338,6 @@ class SettingsService {
     }
   }
 
-  /// Sends a minimal chat completion to the selected model and returns true
-  /// if a non-empty response comes back. Works for both OpenRouter and Groq.
   Future<ModelPingResult> pingModel({
     required String modelId,
     required ModelProvider provider,
@@ -314,6 +346,35 @@ class SettingsService {
     if (apiKey.isEmpty) return ModelPingResult.noKey;
 
     try {
+      if (provider == ModelProvider.gemini) {
+        final url = Uri.parse(
+          'https://generativelanguage.googleapis.com/v1beta/models/'
+          '$modelId:generateContent?key=$apiKey',
+        );
+        final response = await http
+            .post(
+              url,
+              headers: {'Content-Type': 'application/json'},
+              body: jsonEncode({
+                'contents': [
+                  {
+                    'parts': [
+                      {'text': 'Hi'},
+                    ],
+                  },
+                ],
+                'generationConfig': {'maxOutputTokens': 5},
+              }),
+            )
+            .timeout(const Duration(seconds: 15));
+
+        if (response.statusCode == 200) return ModelPingResult.success;
+        if (response.statusCode == 401 || response.statusCode == 403) {
+          return ModelPingResult.unauthorized;
+        }
+        return ModelPingResult.failed;
+      }
+
       final isGroq = provider == ModelProvider.groq;
       final url = Uri.parse(
         isGroq
@@ -326,7 +387,7 @@ class SettingsService {
             url,
             headers: {
               'Authorization': 'Bearer $apiKey',
-              'Content-Type':  'application/json',
+              'Content-Type': 'application/json',
             },
             body: jsonEncode({
               'model': modelId,
@@ -339,7 +400,7 @@ class SettingsService {
           .timeout(const Duration(seconds: 15));
 
       if (response.statusCode == 200) {
-        final body    = jsonDecode(response.body);
+        final body = jsonDecode(response.body);
         final content = body['choices']?[0]?['message']?['content'];
         if (content != null && (content as String).isNotEmpty) {
           return ModelPingResult.success;
@@ -355,12 +416,10 @@ class SettingsService {
     }
   }
 
-  // Kept for backwards-compat with any existing callers.
   Future<ValidationResult> validateApiKey(String apiKey) =>
       validateOpenRouterKey(apiKey);
 }
 
-/// Thrown by [SettingsService.fetchModels] on a non-200 response.
 class SettingsServiceException implements Exception {
   SettingsServiceException(this.message);
   final String message;

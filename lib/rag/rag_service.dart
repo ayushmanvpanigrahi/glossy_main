@@ -5,7 +5,7 @@ import 'vector_store.dart';
 
 class RagService {
   RagService({required this.embeddingService, TextChunker? chunker})
-      : _chunker = chunker ?? const TextChunker();
+    : _chunker = chunker ?? const TextChunker();
 
   final EmbeddingService embeddingService;
   final TextChunker _chunker;
@@ -20,13 +20,15 @@ class RagService {
     final chunks = <TextChunk>[];
     for (var i = 0; i < pieces.length; i++) {
       final embedding = await embeddingService.embed(pieces[i]);
-      chunks.add(TextChunk(
-        id: '$bookId#$i',
-        bookId: bookId,
-        chunkIndex: i,
-        text: pieces[i],
-        embedding: embedding,
-      ));
+      chunks.add(
+        TextChunk(
+          id: '$bookId#$i',
+          bookId: bookId,
+          chunkIndex: i,
+          text: pieces[i],
+          embedding: embedding,
+        ),
+      );
     }
     await store.upsertChunks(chunks);
   }
@@ -40,13 +42,17 @@ class RagService {
   /// Retrieves relevant chunks for a question, ready to prepend to a
   /// chat-completion prompt as context.
   Future<String> retrieveContext(
-      String question, {
-        String? bookId,
-        int topK = 5,
-      }) async {
+    String question, {
+    String? bookId,
+    int topK = 5,
+  }) async {
     final store = await VectorStore.instance();
     final queryEmbedding = await embeddingService.embed(question);
-    final results = await store.search(queryEmbedding, bookId: bookId, topK: topK);
+    final results = await store.search(
+      queryEmbedding,
+      bookId: bookId,
+      topK: topK,
+    );
     if (results.isEmpty) return '';
     return results
         .map((r) => '[chunk ${r.chunk.chunkIndex}] ${r.chunk.text}')

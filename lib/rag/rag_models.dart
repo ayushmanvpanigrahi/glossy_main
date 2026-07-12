@@ -1,4 +1,5 @@
 enum EmbeddingMode { api, local }
+
 enum IndexingTrigger { onAdd, lazy, background }
 
 class TextChunk {

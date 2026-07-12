@@ -1,0 +1,79 @@
+Project structure for: D:\app_development\glossy\lib
+Generated: 2026-07-13 00:04:24
+
+lib/
+├── library/
+│   ├── book.dart
+│   ├── book_card.dart
+│   ├── book_cover.dart
+│   ├── home_screen.dart
+│   ├── home_widgets.dart
+│   ├── indexing_status_service.dart
+│   ├── library_enrichment.dart
+│   └── library_repository.dart
+├── rag/
+│   ├── embedding_service.dart
+│   ├── pdf_text_extractor.dart
+│   ├── rag_models.dart
+│   ├── rag_service.dart
+│   ├── text_chunker.dart
+│   └── vector_store.dart
+├── reader/
+│   ├── ai_explain_service.dart
+│   ├── explain_cards.dart
+│   ├── explain_sheet_header.dart
+│   ├── follow_up_bar.dart
+│   ├── glossy_explain_sheet.dart
+│   ├── glossy_selection_menu.dart
+│   └── reader_screen.dart
+├── router/
+│   ├── app_router.dart
+│   ├── app_routes.dart
+│   └── root_scaffold.dart
+├── settings/
+│   ├── data/
+│   │   ├── models/
+│   │   │   └── settings_models.dart
+│   │   └── services/
+│   │       └── settings_service.dart
+│   └── presentation/
+│       ├── providers/
+│       │   ├── settings_notifier.dart
+│       │   └── settings_state.dart
+│       ├── screens/
+│       │   ├── account/
+│       │   │   ├── plan_screen.dart
+│       │   │   └── profile_screen.dart
+│       │   ├── ai_config/
+│       │   │   ├── ai_provider_screen.dart
+│       │   │   ├── api_keys_screen.dart
+│       │   │   ├── custom_prompt_template_screen.dart
+│       │   │   ├── preferred_model_screen.dart
+│       │   │   ├── rag_book_qna_screen.dart
+│       │   │   └── service_health_screen.dart
+│       │   ├── general/
+│       │   │   ├── help_and_about_screen.dart
+│       │   │   ├── language_screen.dart
+│       │   │   ├── notification_screen.dart
+│       │   │   └── privacy_and_data_screen.dart
+│       │   ├── reader/
+│       │   │   ├── appearances_screen.dart
+│       │   │   └── reading_stats_screen.dart
+│       │   └── settings_screen.dart
+│       ├── sections/
+│       │   ├── account_section.dart
+│       │   ├── ai_config_section.dart
+│       │   ├── general_section.dart
+│       │   └── reader_section.dart
+│       └── widgets/
+│           ├── common_widgets.dart
+│           ├── model_widgets.dart
+│           ├── settings_rows.dart
+│           ├── settings_scaffold.dart
+│           └── status_widgets.dart
+├── ai_status.dart
+├── app_colors.dart
+├── book_cover_service.dart
+└── main.dart
+
+17 directories, 56 files

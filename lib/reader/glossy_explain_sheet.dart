@@ -97,7 +97,9 @@ class _GlossyExplainSheetState extends State<GlossyExplainSheet> {
     } catch (e) {
       debugPrint('Glossy follow-up error: $e');
       setState(
-        () => _followUpAnswers.add('Sorry, kuch gadbad ho gayi — dobara try karo.\n($e)'),
+        () => _followUpAnswers.add(
+          'Sorry, kuch gadbad ho gayi — dobara try karo.\n($e)',
+        ),
       );
     } finally {
       if (mounted) setState(() => _isSendingFollowUp = false);

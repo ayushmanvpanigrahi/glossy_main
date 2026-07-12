@@ -222,7 +222,7 @@ class _HomeScreenState extends State<HomeScreen> {
       if (_books.any(
         (b) => p.basenameWithoutExtension(b.pdfPath) == prospectiveTitle,
       )) {
-        if (mounted){
+        if (mounted) {
           _showSnackBar('This book is already in your library.');
         }
         return;

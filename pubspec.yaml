@@ -39,8 +39,11 @@ dependencies:
   file_selector: ^1.1.0
   path_provider: ^2.1.4
   sqflite: ^2.3.3+1
-  syncfusion_flutter_pdf: ^27.1.58
+  syncfusion_flutter_pdf: ^34.1.30
   path: ^1.9.0
+  syncfusion_flutter_pdfviewer: ^34.1.30
+  flutter_riverpod: ^2.6.1
+  go_router: ^14.8.1
 
 dev_dependencies:
   flutter_test:

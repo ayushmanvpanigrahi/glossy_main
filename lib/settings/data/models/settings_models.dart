@@ -3,12 +3,20 @@
 // ---------------------------------------------------------------------------
 
 enum ValidationResult { valid, invalid, networkError, unknown }
-enum ModelProvider    { openRouter, groq }
 
-// New: result of a live model ping
-enum ModelPingResult  { success, emptyResponse, failed, unauthorized, networkError, noKey }
+enum ModelProvider { openRouter, groq, gemini }
 
-// New: per-key status shown in the UI
+enum ModelType { text, embedding, other }
+
+enum ModelPingResult {
+  success,
+  emptyResponse,
+  failed,
+  unauthorized,
+  networkError,
+  noKey,
+}
+
 enum KeyStatus { idle, checking, valid, invalid, networkError }
 
 class ModelFetchResult {
@@ -17,7 +25,6 @@ class ModelFetchResult {
   final List<String> errors;
 }
 
-// Replaces the inline record type from the old service
 class SavedSettings {
   const SavedSettings({
     this.apiKey,
@@ -49,6 +56,7 @@ class OpenRouterModel {
     required this.isFree,
     this.priceLabel,
     this.provider = ModelProvider.openRouter,
+    this.type = ModelType.text,
   });
 
   final String id;
@@ -56,18 +64,45 @@ class OpenRouterModel {
   final bool isFree;
   final String? priceLabel;
   final ModelProvider provider;
+  final ModelType type;
+
+  ModelProvider get effectiveProvider {
+    if (provider == ModelProvider.groq) return ModelProvider.groq;
+    if (provider == ModelProvider.gemini) return ModelProvider.gemini;
+    if (id.startsWith('google/')) return ModelProvider.gemini;
+    if (id.startsWith('groq/')) return ModelProvider.groq;
+    return ModelProvider.openRouter;
+  }
 
   factory OpenRouterModel.fromJson(Map<String, dynamic> json) {
-    final id   = json['id'] as String? ?? '';
+    final id = json['id'] as String? ?? '';
     final free = id.endsWith(':free');
+
+    ModelType type = ModelType.text;
+    final arch = json['architecture'] as Map<String, dynamic>?;
+    if (arch != null) {
+      final outputMods = (arch['output_modalities'] as List?) ?? const [];
+
+      if (outputMods.contains('embeddings') || id.contains('embedding')) {
+        type = ModelType.embedding;
+      } else if (outputMods.contains('text')) {
+        if (outputMods.contains('image') || outputMods.contains('audio')) {
+          type = ModelType.other;
+        } else {
+          type = ModelType.text;
+        }
+      } else {
+        type = ModelType.other;
+      }
+    }
 
     String? priceLabel;
     if (!free) {
       final pricing = json['pricing'] as Map<String, dynamic>?;
       if (pricing != null) {
-        final rawPrompt      = pricing['prompt']?.toString() ?? '0';
-        final rawCompletion  = pricing['completion']?.toString() ?? '0';
-        final promptCost     = double.tryParse(rawPrompt) ?? 0.0;
+        final rawPrompt = pricing['prompt']?.toString() ?? '0';
+        final rawCompletion = pricing['completion']?.toString() ?? '0';
+        final promptCost = double.tryParse(rawPrompt) ?? 0.0;
         final completionCost = double.tryParse(rawCompletion) ?? 0.0;
         final cost = promptCost > 0 ? promptCost : completionCost;
         if (cost > 0) {
@@ -80,10 +115,12 @@ class OpenRouterModel {
     }
 
     return OpenRouterModel(
-      id:   id,
+      id: id,
       name: json['name'] as String? ?? id,
       isFree: free,
       priceLabel: priceLabel,
+      type: type,
+      provider: ModelProvider.openRouter,
     );
   }
 }

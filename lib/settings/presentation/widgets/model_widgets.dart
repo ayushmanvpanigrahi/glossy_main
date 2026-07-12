@@ -1,10 +1,6 @@
 import 'package:flutter/material.dart';
-import '../app_colors.dart';
-import 'settings_models.dart';
-
-// ---------------------------------------------------------------------------
-// Scrollable model list (card style) + its supporting badges.
-// ---------------------------------------------------------------------------
+import '../../../../app_colors.dart';
+import '../../data/models/settings_models.dart';
 
 class ModelList extends StatelessWidget {
   const ModelList({
@@ -83,8 +79,28 @@ class ModelCard extends StatelessWidget {
   final bool isSelected;
   final VoidCallback onTap;
 
+  Color _getProviderColor(ModelProvider p) {
+    return switch (p) {
+      ModelProvider.openRouter => AppColors.muted,
+      ModelProvider.groq => const Color(0xFFF55036),
+      ModelProvider.gemini => const Color(0xFF1A73E8),
+    };
+  }
+
+  Color _getTypeColor(ModelType t) {
+    return switch (t) {
+      ModelType.text => AppColors.ink,
+      ModelType.embedding => const Color(0xFF8E24AA),
+      ModelType.other => const Color(0xFF00897B),
+    };
+  }
+
   @override
   Widget build(BuildContext context) {
+    final effectiveProvider = model.effectiveProvider;
+    final providerColor = _getProviderColor(effectiveProvider);
+    final typeColor = _getTypeColor(model.type);
+
     return GestureDetector(
       onTap: onTap,
       child: AnimatedContainer(
@@ -97,21 +113,30 @@ class ModelCard extends StatelessWidget {
         ),
         child: Row(
           children: [
-            // Model name + ID + provider tag
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    model.name,
-                    style: TextStyle(
-                      fontFamily: 'Inter',
-                      fontSize: 13,
-                      fontWeight: isSelected
-                          ? FontWeight.w600
-                          : FontWeight.w400,
-                      color: AppColors.ink,
-                    ),
+                  Row(
+                    children: [
+                      Flexible(
+                        child: Text(
+                          model.name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontFamily: 'Inter',
+                            fontSize: 13,
+                            fontWeight: isSelected
+                                ? FontWeight.w600
+                                : FontWeight.w400,
+                            color: AppColors.ink,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      _TypeTag(type: model.type, color: typeColor),
+                    ],
                   ),
                   const SizedBox(height: 2),
                   Text(
@@ -124,29 +149,20 @@ class ModelCard extends StatelessWidget {
                   ),
                   const SizedBox(height: 3),
                   Text(
-                    model.provider == ModelProvider.groq
-                        ? 'GROQ'
-                        : 'OPENROUTER',
+                    effectiveProvider.name.toUpperCase(),
                     style: TextStyle(
                       fontFamily: 'JetBrainsMono',
                       fontSize: 8,
                       fontWeight: FontWeight.w700,
                       letterSpacing: 0.5,
-                      color: model.provider == ModelProvider.groq
-                          ? AppColors.primary
-                          : AppColors.muted,
+                      color: providerColor,
                     ),
                   ),
                 ],
               ),
             ),
-
             const SizedBox(width: 8),
-
-            // FREE / price badge
             PriceBadge(isFree: model.isFree, priceLabel: model.priceLabel),
-
-            // Selected checkmark
             if (isSelected) ...[
               const SizedBox(width: 8),
               const Icon(
@@ -164,7 +180,6 @@ class ModelCard extends StatelessWidget {
 
 class PriceBadge extends StatelessWidget {
   const PriceBadge({super.key, required this.isFree, this.priceLabel});
-
   final bool isFree;
   final String? priceLabel;
 
@@ -194,6 +209,32 @@ class PriceBadge extends StatelessWidget {
           fontSize: 9,
           fontWeight: FontWeight.w700,
           letterSpacing: 0.5,
+          color: color,
+        ),
+      ),
+    );
+  }
+}
+
+class _TypeTag extends StatelessWidget {
+  const _TypeTag({required this.type, required this.color});
+  final ModelType type;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Text(
+        type.name.toUpperCase(),
+        style: TextStyle(
+          fontFamily: 'Inter',
+          fontSize: 7,
+          fontWeight: FontWeight.w800,
           color: color,
         ),
       ),

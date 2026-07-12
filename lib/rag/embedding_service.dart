@@ -11,7 +11,10 @@ class GeminiEmbeddingService implements EmbeddingService {
   GeminiEmbeddingService(this.apiKey);
   final String apiKey;
 
-  static const _model = 'text-embedding-004';
+  // 'text-embedding-004' returns 404 on some regions/accounts with v1beta.
+  // 'embedding-001' is the stable, universally available Gemini embedding
+  // model and works on both v1 and v1beta.
+  static const _model = 'gemini-embedding-2';
   static const _endpoint =
       'https://generativelanguage.googleapis.com/v1beta/models/$_model:embedContent';
 
@@ -20,17 +23,17 @@ class GeminiEmbeddingService implements EmbeddingService {
     final uri = Uri.parse('$_endpoint?key=$apiKey');
     final response = await http
         .post(
-      uri,
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({
-        'model': 'models/$_model',
-        'content': {
-          'parts': [
-            {'text': text}
-          ]
-        },
-      }),
-    )
+          uri,
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({
+            'model': 'models/$_model',
+            'content': {
+              'parts': [
+                {'text': text},
+              ],
+            },
+          }),
+        )
         .timeout(const Duration(seconds: 15));
 
     if (response.statusCode != 200) {
@@ -53,7 +56,7 @@ class LocalEmbeddingService implements EmbeddingService {
   Future<List<double>> embed(String text) {
     throw UnimplementedError(
       'Local embeddings model not bundled yet — see TODO in '
-          'embedding_service.dart before enabling this mode.',
+      'embedding_service.dart before enabling this mode.',
     );
   }
 }

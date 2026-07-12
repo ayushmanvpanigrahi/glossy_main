@@ -1,6 +1,7 @@
 import 'dart:collection';
+import 'package:flutter/foundation.dart';
 import '../book_cover_service.dart';
-import '../settings/settings_service.dart';
+import '../settings/data/services/settings_service.dart';
 import '../rag/rag_models.dart';
 import '../rag/rag_service.dart';
 import '../rag/embedding_service.dart';
@@ -67,7 +68,8 @@ class LibraryEnrichment {
   }
 
   /// Current indexing status for [book], for UI badges.
-  BookIndexStatus statusFor(Book book) => _statusService.statusFor(book.pdfPath);
+  BookIndexStatus statusFor(Book book) =>
+      _statusService.statusFor(book.pdfPath);
 
   /// Enqueues [book] for RAG indexing if the user's indexing-trigger
   /// setting calls for it right now. The actual work happens one book at
@@ -139,6 +141,11 @@ class LibraryEnrichment {
     final apiKey = ragSettings.embeddingApiKey;
 
     if (embeddingMode == 'api' && (apiKey == null || apiKey.isEmpty)) {
+      debugPrint(
+        'Glossy indexing skipped for ${book.pdfPath}: no embedding API key '
+        'set (embeddingMode=$embeddingMode). Set a Gemini embedding API '
+        'key in Settings → RAG (Book Q&A).',
+      );
       _statusService.setStatus(book.pdfPath, BookIndexStatus.failed);
       return;
     }
@@ -174,6 +181,10 @@ class LibraryEnrichment {
 
   Future<void> _runIndexJob(_IndexJob job) async {
     final pdfPath = job.book.pdfPath;
+    debugPrint('Glossy [index] START: $pdfPath');
+    debugPrint(
+      'Glossy [index] mode=${job.embeddingMode} keyPresent=${job.apiKey != null && job.apiKey!.isNotEmpty}',
+    );
     _statusService.setStatus(pdfPath, BookIndexStatus.indexing);
 
     try {
@@ -182,18 +193,22 @@ class LibraryEnrichment {
           : const LocalEmbeddingService();
       final ragService = RagService(embeddingService: embeddingService);
 
+      debugPrint('Glossy [index] extracting text...');
       final text = await _pdfExtractor.extractText(pdfPath);
+      debugPrint('Glossy [index] extracted ${text.length} chars');
       if (text.trim().isEmpty) {
+        debugPrint('Glossy [index] FAILED: empty text');
         _statusService.setStatus(pdfPath, BookIndexStatus.failed);
         return;
       }
 
+      debugPrint('Glossy [index] calling ragService.indexBook...');
       await ragService.indexBook(pdfPath, text);
+      debugPrint('Glossy [index] DONE: indexed successfully');
       _statusService.setStatus(pdfPath, BookIndexStatus.indexed);
-    } catch (_) {
-      // Best-effort — indexing failure shouldn't surface as a crash;
-      // the status badge + a manual "Index for AI" retry is the recovery
-      // path for the user.
+    } catch (e, st) {
+      debugPrint('Glossy [index] FAILED: $e');
+      debugPrint('$st');
       _statusService.setStatus(pdfPath, BookIndexStatus.failed);
     }
   }

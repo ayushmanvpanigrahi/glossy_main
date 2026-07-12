@@ -1,4 +1,3 @@
-
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 
@@ -31,8 +30,8 @@ class BookCoverService {
       if (docs.isEmpty) return BookMetadata.empty;
 
       final doc = docs.first as Map<String, dynamic>;
-      final authors  = (doc['author_name'] as List?)?.cast<String>();
-      final coverId  = doc['cover_i'] as int?;
+      final authors = (doc['author_name'] as List?)?.cast<String>();
+      final coverId = doc['cover_i'] as int?;
 
       return BookMetadata(
         author: (authors != null && authors.isNotEmpty) ? authors.first : null,
